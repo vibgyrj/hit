@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anonymous Verified Chat</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 420px; margin: 40px auto; padding: 16px; background: #f4f4f9; }
+    .card { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    input, button { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; }
+    button { background: #111; color: #fff; border: none; cursor: pointer; font-weight: bold; }
+    button:disabled { background: #888; }
+    .hidden { display: none; }
+    #chat-box { height: 260px; overflow-y: auto; border: 1px solid #eee; padding: 10px; margin-top: 10px; background: #fafafa; }
+    .msg { margin-bottom: 8px; font-size: 14px; }
+    .status { color: #d9534f; font-size: 13px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <!-- STEP 1: Enter Phone Number -->
+  <div id="step-phone">
+    <h3>Join Verified Anonymous Chat</h3>
+    <p style="font-size: 13px; color: #555;">Your number is used only for OTP verification and stays hidden.</p>
+    <input type="tel" id="phone" placeholder="Enter 10-digit mobile number" maxlength="10" />
+    <button id="send-btn" onclick="sendOTP()">Send OTP</button>
+  </div>
+
+  <!-- STEP 2: Verify OTP -->
+  <div id="step-otp" class="hidden">
+    <h3>Enter OTP</h3>
+    <p style="font-size: 13px; color: #555;">Sent to +91 <span id="display-phone"></span></p>
+    <input type="number" id="otp" placeholder="Enter 4 or 6 digit OTP" />
+    <button id="verify-btn" onclick="verifyOTP()">Verify & Join</button>
+  </div>
+
+  <!-- STEP 3: Anonymous Chat Room -->
+  <div id="step-chat" class="hidden">
+    <h3>Group Room <span id="user-alias" style="font-size: 13px; color: #007bff;"></span></h3>
+    <div id="chat-box"></div>
+    <input type="text" id="chat-input" placeholder="Type an anonymous message..." />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+
+  <div id="status" class="status"></div>
+</div>
+
+<script>
+  let userPhone = "";
+  let userAlias = "";
+
+  async function sendOTP() {
+    const phoneInput = document.getElementById("phone").value.trim();
+    if (!/^[6-9]\d{9}$/.test(phoneInput)) {
+      return showStatus("Enter a valid 10-digit Indian mobile number.");
+    }
+
+    userPhone = "91" + phoneInput;
+    document.getElementById("send-btn").disabled = true;
+    showStatus("Sending OTP...");
+
+    try {
+      const res = await fetch("/api/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mobile: userPhone })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        document.getElementById("display-phone").innerText = phoneInput;
+        document.getElementById("step-phone").classList.add("hidden");
+        document.getElementById("step-otp").classList.remove("hidden");
+        showStatus("");
+      } else {
+        showStatus(data.message || "Failed to send OTP.");
+        document.getElementById("send-btn").disabled = false;
+      }
+    } catch (err) {
+      showStatus("Network error.");
+      document.getElementById("send-btn").disabled = false;
+    }
+  }
+
+  async function verifyOTP() {
+    const otp = document.getElementById("otp").value.trim();
+    if (!otp) return showStatus("Please enter the OTP.");
+
+    document.getElementById("verify-btn").disabled = true;
+    showStatus("Verifying...");
+
+    try {
+      const res = await fetch("/api/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mobile: userPhone, otp })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        userAlias = data.alias; // Server assigns anonymous ID (e.g., User #4821)
+        document.getElementById("user-alias").innerText = `(${userAlias})`;
+        document.getElementById("step-otp").classList.add("hidden");
+        document.getElementById("step-chat").classList.remove("hidden");
+        showStatus("");
+        appendMessage("System", `Welcome ${userAlias}! Your phone number is hidden.`);
+      } else {
+        showStatus(data.message || "Invalid OTP.");
+        document.getElementById("verify-btn").disabled = false;
+      }
+    } catch (err) {
+      showStatus("Verification failed.");
+      document.getElementById("verify-btn").disabled = false;
+    }
+  }
+
+  function sendMessage() {
+    const input = document.getElementById("chat-input");
+    const text = input.value.trim();
+    if (!text) return;
+
+    // Replace this with a WebSocket / Firebase / Supabase push in production
+    appendMessage(userAlias, text);
+    input.value = "";
+  }
+
+  function appendMessage(sender, text) {
+    const box = document.getElementById("chat-box");
+    const div = document.createElement("div");
+    div.className = "msg";
+    div.innerHTML = `<strong>${sender}:</strong> ${text}`;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function showStatus(msg) {
+    document.getElementById("status").innerText = msg;
+  }
+</script>
+</body>
+</html>
